@@ -43,10 +43,9 @@ interface Booking {
 
 const AdminDashboard: React.FC = () => {
   const { user } = useAuth();
+  const { getSetting, updateSetting, settings, loading: contentLoading } = useContent();
   const [editingBooking, setEditingBooking] = useState<string | null>(null);
   const [editBookingData, setEditBookingData] = useState<Partial<Booking>>({});
-  const { sendWebhook } = useBooking();
-  const { getSetting, updateSetting, settings, loading: contentLoading } = useContent();
   const [activeTab, setActiveTab] = useState('bookings');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,11 +67,6 @@ const AdminDashboard: React.FC = () => {
   // Today's bookings visualization state
   const [todaysBookings, setTodaysBookings] = useState<Booking[]>([]);
   const [hourlySlots, setHourlySlots] = useState<string[]>([]);
-
-  // Early return after all hooks are declared
-  if (!user || (user.role !== 'admin' && user.role !== 'staff')) {
-    return <Navigate to="/login" replace />;
-  }
 
   useEffect(() => {
     fetchBookings();
@@ -125,6 +119,11 @@ const AdminDashboard: React.FC = () => {
       supabase.removeChannel(bookingsSubscription);
     };
   }, [contentLoading, settings]);
+
+  // Authentication check after all hooks are declared
+  if (!user || (user.role !== 'admin' && user.role !== 'staff')) {
+    return <Navigate to="/login" replace />;
+  }
 
   const fetchTodaysBookings = async () => {
     try {
