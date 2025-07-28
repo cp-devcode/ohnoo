@@ -69,6 +69,7 @@ const AdminDashboard: React.FC = () => {
   const [todaysBookings, setTodaysBookings] = useState<Booking[]>([]);
   const [hourlySlots, setHourlySlots] = useState<string[]>([]);
 
+  // Early return after all hooks are declared
   if (!user || (user.role !== 'admin' && user.role !== 'staff')) {
     return <Navigate to="/login" replace />;
   }

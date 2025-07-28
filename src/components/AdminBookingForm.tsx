@@ -182,20 +182,14 @@ const createNewClient = async () => {
     // ✅ Refresh user context to reflect restored session
     await refreshUserSession();
 
-    // ✅ Insert client into users table
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .insert({
-        id: authData.user.id,
-        email: newClientData.email,
-        name: newClientData.name,
-        whatsapp: newClientData.whatsapp,
-        role: 'customer',
-      })
-      .select()
-      .single();
-
-    if (userError) throw new Error(`Failed to create user profile: ${userError.message}`);
+    // ✅ Get the created user data (the user profile should be created automatically via database trigger)
+    const userData = {
+      id: authData.user.id,
+      email: newClientData.email,
+      name: newClientData.name,
+      whatsapp: newClientData.whatsapp,
+      role: 'customer',
+    };
 
     // ✅ Notify webhook
     try {
