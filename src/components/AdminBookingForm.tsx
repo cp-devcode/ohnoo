@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, User, Phone, Mail, MessageCircle, X, Search, Plus } from 'lucide-react';
 import { useBooking } from '../contexts/BookingContext';
-import { useContent } from '../hooks/useContent';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase'; // assuming supabase is configured like in the working code
@@ -39,8 +38,8 @@ const AdminBookingForm: React.FC<{
   onSuccess: () => void;
 }> = ({ onClose, onSuccess }) => {
   const { createAdminBooking } = useBooking();
-  const { getSetting } = useContent();
   const [workspaceTypes, setWorkspaceTypes] = useState([]);
+  const [hourlySlots, setHourlySlots] = useState<string[]>([]);
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [clients, setClients] = useState<ClientUser[]>([]);
@@ -64,13 +63,7 @@ const AdminBookingForm: React.FC<{
   const [newClientData, setNewClientData] = useState({ name: '', email: '', whatsapp: '', phone: '' });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  // Get dynamic settings from database
-  const totalDesks = parseInt(getSetting('total_desks', '6'));
-  const hourlySlots = getSetting('hourly_slots', '9:00 AM,10:00 AM,11:00 AM,12:00 PM,1:00 PM,2:00 PM,3:00 PM,4:00 PM,5:00 PM')
-    .split(',')
-    .map(slot => slot.trim())
-    .filter(slot => slot.length > 0);
+  const totalDesks = 6; // Assuming this is fixed, like in the working example
 
   // Handle modal close with state cleanup
   const handleClose = () => {
@@ -154,11 +147,17 @@ const createNewClient = async () => {
   setIsSubmittingClient(true);
 
   try {
+    // ✅ Capture the current admin session before creating a new user
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw new Error('Unable to retrieve current session');
+    const adminSession = sessionData?.session;
+    if (!adminSession) throw new Error('Admin session is not available');
+
     const randomPassword =
       Math.random().toString(36).slice(-8) +
       Math.random().toString(36).slice(-8);
 
-    // Create user account
+    // ✅ Create user (this switches the session to the new user)
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: newClientData.email,
       password: randomPassword,
@@ -174,23 +173,16 @@ const createNewClient = async () => {
     if (authError) throw new Error(`Failed to create user account: ${authError.message}`);
     if (!authData.user) throw new Error('Failed to create user account');
 
-    // Create user profile in public.users table with whatsapp
-    const { error: profileError } = await supabase
-      .from('users')
-      .insert({
-        id: authData.user.id,
-        email: newClientData.email,
-        name: newClientData.name,
-        whatsapp: newClientData.whatsapp,
-        role: 'customer'
-      });
+    // ✅ Restore admin session after sign-up
+    await supabase.auth.setSession({
+      access_token: adminSession.access_token,
+      refresh_token: adminSession.refresh_token,
+    });
 
-    if (profileError) {
-      console.error('Error creating user profile:', profileError);
-      // Don't throw error here as the auth user was created successfully
-    }
+    // ✅ Refresh user context to reflect restored session
+    await refreshUserSession();
 
-    // Create user data object for local state
+    // ✅ Get the created user data (the user profile should be created automatically via database trigger)
     const userData = {
       id: authData.user.id,
       email: newClientData.email,
@@ -199,7 +191,7 @@ const createNewClient = async () => {
       role: 'customer',
     };
 
-    // Notify webhook
+    // ✅ Notify webhook
     try {
       await fetch('https://aibackend.cp-devcode.com/webhook/1ef572d1-3263-4784-bc19-c38b3fbc09d0', {
         method: 'POST',
@@ -221,7 +213,7 @@ const createNewClient = async () => {
       console.error('Webhook failed:', webhookError);
     }
 
-    // Update local state
+    // ✅ Update local state
     await fetchClients();
     handleClientSelect(userData);
     setNewClientData({ name: '', email: '', whatsapp: '', phone: '' });
@@ -251,6 +243,7 @@ const createNewClient = async () => {
       if (error) throw error;
 
       setWorkspaceTypes(data || []);
+      setHourlySlots(['08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM', '05:00 PM']); // Example slots, you can customize
     } catch (error) {
       console.error('Error fetching workspace types:', error);
     }
