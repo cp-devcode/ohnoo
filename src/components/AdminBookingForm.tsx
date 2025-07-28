@@ -63,7 +63,11 @@ const AdminBookingForm: React.FC<{
   const [newClientData, setNewClientData] = useState({ name: '', email: '', whatsapp: '', phone: '' });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const totalDesks = 6; // Assuming this is fixed, like in the working example
+  const totalDesks = parseInt(getSetting('total_desks', '6'));
+  const hourlySlots = getSetting('hourly_slots', '9:00 AM,10:00 AM,11:00 AM,12:00 PM,1:00 PM,2:00 PM,3:00 PM,4:00 PM,5:00 PM')
+    .split(',')
+    .map(slot => slot.trim())
+    .filter(slot => slot.length > 0);
 
   // Handle modal close with state cleanup
   const handleClose = () => {
@@ -243,7 +247,6 @@ const createNewClient = async () => {
       if (error) throw error;
 
       setWorkspaceTypes(data || []);
-      setHourlySlots(['08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM', '05:00 PM']); // Example slots, you can customize
     } catch (error) {
       console.error('Error fetching workspace types:', error);
     }
