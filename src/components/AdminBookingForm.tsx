@@ -64,10 +64,6 @@ const AdminBookingForm: React.FC<{
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const totalDesks = parseInt(getSetting('total_desks', '6'));
-  const hourlySlots = getSetting('hourly_slots', '9:00 AM,10:00 AM,11:00 AM,12:00 PM,1:00 PM,2:00 PM,3:00 PM,4:00 PM,5:00 PM')
-    .split(',')
-    .map(slot => slot.trim())
-    .filter(slot => slot.length > 0);
 
   // Handle modal close with state cleanup
   const handleClose = () => {
