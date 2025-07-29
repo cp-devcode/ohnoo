@@ -85,10 +85,10 @@ const AdminBookingForm: React.FC<{
   const durations = [
     { value: '1-hour', label: '1 Hour', multiplier: 1 },
     { value: '2-hours', label: '2 Hours', multiplier: 2 },
+    { value: '3-hours', label: '3 Hours', multiplier: 3 },
     { value: '4-hours', label: '4 Hours', multiplier: 4 },
-    { value: '1-day', label: '1 Day', multiplier: 1 },
-    { value: '1-week', label: '1 Week', multiplier: 7 },
-    { value: '1-month', label: '1 Month', multiplier: 30 },
+    { value: '5-hours', label: '5 Hours', multiplier: 5 },
+    { value: '6-hours', label: '6 Hours', multiplier: 6 },
   ];
 
   // Fetch workspace types and hourly slots
