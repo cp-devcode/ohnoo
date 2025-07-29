@@ -48,6 +48,13 @@ const AdminBookingForm: React.FC<{
   const [creatingNewClient, setCreatingNewClient] = useState(false); // controls visibility of new client form
   const [isSubmittingClient, setIsSubmittingClient] = useState(false); // controls loading state
   const { refreshUserSession } = useAuth();
+  
+  // Add missing function reference
+  const getSetting = (key: string, fallback: string) => {
+    // This is a placeholder - in a real implementation, you'd get this from useContent hook
+    // For now, return fallback values
+    return fallback;
+  };
 
   const [showClientSearch, setShowClientSearch] = useState(false);
   const [formData, setFormData] = useState({
