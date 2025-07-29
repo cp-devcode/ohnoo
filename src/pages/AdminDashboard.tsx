@@ -6,6 +6,8 @@ import { supabase } from '../lib/supabase';
 import { useBooking } from '../contexts/BookingContext';
 import { Navigate, Link } from 'react-router-dom';
 import AdminBookingForm from '../components/AdminBookingForm';
+import SubscriptionManagement from '../components/SubscriptionManagement';
+import SessionManagement from '../components/SessionManagement';
 import { 
   Calendar, 
   Users, 
@@ -584,6 +586,26 @@ const AdminDashboard: React.FC = () => {
             >
               Bookings
             </button>
+            <button
+              onClick={() => setActiveTab('sessions')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'sessions'
+                  ? 'border-yellow-500 text-yellow-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Sessions
+            </button>
+            <button
+              onClick={() => setActiveTab('subscriptions')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'subscriptions'
+                  ? 'border-yellow-500 text-yellow-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Subscriptions
+            </button>
             <Link
               to="/admin/clients"
               className="py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium text-sm"
@@ -932,6 +954,14 @@ const AdminDashboard: React.FC = () => {
             )}
           </div>
         </div>
+          {activeTab === 'sessions' && (
+            <SessionManagement />
+          )}
+
+          {activeTab === 'subscriptions' && (
+            <SubscriptionManagement />
+          )}
+
       </div>
 
       {/* Admin Booking Form Modal */}
