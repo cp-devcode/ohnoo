@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useContent } from '../hooks/useContent';
 import AnimatedSection from '../components/AnimatedSection';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { Calendar, Clock, User, ArrowRight, Filter, X } from 'lucide-react';
+import { Calendar, Clock, User, ArrowRight, Filter, X, CreditCard, Play } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useBooking } from '../contexts/BookingContext';
 import toast from 'react-hot-toast';
@@ -26,13 +26,29 @@ interface Booking {
   updated_at: string;
 }
 
+interface UserSubscription {
+  id: string;
+  hours_remaining: number;
+  start_date: string;
+  end_date: string;
+  status: string;
+  subscription_plan: {
+    name: string;
+    hours_included: number;
+    price: number;
+  };
+  created_at: string;
+}
+
 const MyBookingsPage: React.FC = () => {
   const { user } = useAuth();
   const { getContent } = useContent();
   const { cancelBooking } = useBooking();
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [userSubscriptions, setUserSubscriptions] = useState<UserSubscription[]>([]);
   const [filteredBookings, setFilteredBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [subscriptionsLoading, setSubscriptionsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'date' | 'created_at' | 'price'>('created_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -41,6 +57,7 @@ const MyBookingsPage: React.FC = () => {
   useEffect(() => {
     if (user) {
       fetchBookings();
+      fetchUserSubscriptions();
     }
   }, [user]);
 
@@ -64,6 +81,37 @@ const MyBookingsPage: React.FC = () => {
       toast.error('Failed to load booking history');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchUserSubscriptions = async () => {
+    try {
+      setSubscriptionsLoading(true);
+      const { data, error } = await supabase
+        .from('user_subscriptions')
+        .select(`
+          id,
+          hours_remaining,
+          start_date,
+          end_date,
+          status,
+          created_at,
+          subscription_plan:subscription_plan_id (
+            name,
+            hours_included,
+            price
+          )
+        `)
+        .eq('user_id', user?.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setUserSubscriptions(data || []);
+    } catch (error) {
+      console.error('Error fetching user subscriptions:', error);
+      toast.error('Failed to load subscriptions');
+    } finally {
+      setSubscriptionsLoading(false);
     }
   };
 
@@ -168,12 +216,12 @@ const MyBookingsPage: React.FC = () => {
             <div className="text-center">
               <AnimatedSection animation="slideUp" delay={200} duration={800}>
                 <h1 className="text-4xl md:text-5xl font-bold mb-4">
-                  My Bookings
+                  My Account
                 </h1>
               </AnimatedSection>
               <AnimatedSection animation="slideUp" delay={400} duration={800}>
                 <p className="text-xl md:text-2xl max-w-3xl mx-auto">
-                  View and manage your workspace reservations
+                  View and manage your workspace reservations and subscriptions
                 </p>
               </AnimatedSection>
             </div>
@@ -184,9 +232,88 @@ const MyBookingsPage: React.FC = () => {
       {/* Bookings Section */}
       <section className="py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Subscriptions Section */}
+          <AnimatedSection animation="slideUp" duration={600}>
+            <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
+              <h3 className="text-xl font-semibold text-gray-900 mb-6">My Subscriptions</h3>
+              
+              {subscriptionsLoading ? (
+                <div className="flex justify-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-yellow-500"></div>
+                </div>
+              ) : userSubscriptions.length === 0 ? (
+                <div className="text-center py-8">
+                  <CreditCard className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-500 mb-4">You don't have any active subscriptions</p>
+                  <Link
+                    to="/contact"
+                    className="bg-yellow-500 text-black px-4 py-2 rounded-md font-semibold hover:bg-yellow-600 transition-colors"
+                  >
+                    Contact Us for Subscriptions
+                  </Link>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {userSubscriptions.map((subscription) => (
+                    <div key={subscription.id} className="border border-gray-200 rounded-lg p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="text-lg font-semibold text-gray-900">
+                          {subscription.subscription_plan.name}
+                        </h4>
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                          subscription.status === 'active' ? 'bg-green-100 text-green-800' : 
+                          subscription.status === 'expired' ? 'bg-red-100 text-red-800' : 
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {subscription.status.toUpperCase()}
+                        </span>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Hours Remaining:</span>
+                          <span className={`font-semibold ${
+                            subscription.hours_remaining <= 5 ? 'text-red-600' : 
+                            subscription.hours_remaining <= 20 ? 'text-yellow-600' : 'text-green-600'
+                          }`}>
+                            {subscription.hours_remaining}h
+                          </span>
+                        </div>
+                        
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Valid Until:</span>
+                          <span className="font-semibold">
+                            {new Date(subscription.end_date).toLocaleDateString()}
+                          </span>
+                        </div>
+
+                        <div className="pt-3 border-t">
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div 
+                              className={`h-2 rounded-full ${
+                                subscription.hours_remaining <= 5 ? 'bg-red-500' : 
+                                subscription.hours_remaining <= 20 ? 'bg-yellow-500' : 'bg-green-500'
+                              }`}
+                              style={{ 
+                                width: `${Math.max(5, (subscription.hours_remaining / subscription.subscription_plan.hours_included) * 100)}%` 
+                              }}
+                            ></div>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {subscription.hours_remaining} of {subscription.subscription_plan.hours_included} hours remaining
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </AnimatedSection>
           {/* Filters and Sorting */}
           <AnimatedSection animation="slideUp" duration={600}>
             <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">My Bookings</h3>
               <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
                 <div className="flex items-center space-x-4">
                   <Filter className="w-5 h-5 text-gray-500" />
