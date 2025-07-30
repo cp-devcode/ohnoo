@@ -8,6 +8,7 @@ import { Navigate, Link } from 'react-router-dom';
 import AdminBookingForm from '../components/AdminBookingForm';
 import SubscriptionManagement from '../components/SubscriptionManagement';
 import SessionManagement from '../components/SessionManagement';
+import toast from 'react-hot-toast';
 import { 
   Calendar, 
   Users, 
@@ -22,7 +23,8 @@ import {
   Save,
   MessageCircle,
   Plus,
-  Clock
+  Clock,
+  Play
 } from 'lucide-react';
 
 interface Booking {
@@ -43,6 +45,25 @@ interface Booking {
   updated_at: string;
 }
 
+interface RecentSession {
+  id: string;
+  user_id: string;
+  session_type: string;
+  start_time: string;
+  end_time: string | null;
+  duration_minutes: number | null;
+  status: string;
+  user: {
+    name: string;
+    email: string;
+  };
+  booking?: {
+    workspace_type: string;
+    date: string;
+    time_slot: string;
+  };
+}
+
 const AdminDashboard: React.FC = () => {
   const { user } = useAuth();
   const { getSetting, updateSetting, settings, loading: contentLoading } = useContent();
@@ -50,13 +71,15 @@ const AdminDashboard: React.FC = () => {
   const [editBookingData, setEditBookingData] = useState<Partial<Booking>>({});
   const [activeTab, setActiveTab] = useState('bookings');
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdminBookingForm, setShowAdminBookingForm] = useState(false);
   const [stats, setStats] = useState({
     totalBookings: 0,
     activeMembers: 0,
     monthlyRevenue: 0,
-    pendingBookings: 0
+    pendingBookings: 0,
+    activeSessions: 0
   });
 
   // Settings state
@@ -73,6 +96,7 @@ const AdminDashboard: React.FC = () => {
   useEffect(() => {
     fetchBookings();
     fetchStats();
+    fetchRecentSessions();
     fetchTodaysBookings();
     fetchHourlySlots();
   }, []);
@@ -192,16 +216,58 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const fetchStats = async () => {
+  const fetchRecentSessions = async () => {
     try {
-      const { data: bookingsData, error } = await supabase
-        .from('bookings')
-        .select('status, total_price, created_at');
+      const { data, error } = await supabase
+        .from('user_sessions')
+        .select(`
+          id,
+          user_id,
+          session_type,
+          start_time,
+          end_time,
+          duration_minutes,
+          status,
+          user:user_id (
+            name,
+            email
+          ),
+          booking:booking_id (
+            workspace_type,
+            date,
+            time_slot
+          )
+        `)
+        .order('start_time', { ascending: false })
+        .limit(10);
 
       if (error) throw error;
+      setRecentSessions(data || []);
+    } catch (error) {
+      console.error('Error fetching recent sessions:', error);
+    }
+  };
 
+  const fetchStats = async () => {
+    try {
+      const [bookingsResult, sessionsResult] = await Promise.all([
+        supabase
+        .from('bookings')
+        .select('status, total_price, created_at'),
+        supabase
+        .from('user_sessions')
+        .select('status')
+        .eq('status', 'active')
+      ]);
+
+      if (bookingsResult.error) throw bookingsResult.error;
+      if (sessionsResult.error) throw sessionsResult.error;
+
+      const bookingsData = bookingsResult.data;
+      const sessionsData = sessionsResult.data;
       const totalBookings = bookingsData?.length || 0;
       const pendingBookings = bookingsData?.filter(b => b.status === 'pending' || b.status === 'code_sent').length || 0;
+      const activeSessions = sessionsData?.length || 0;
       const monthlyRevenue = bookingsData
         ?.filter(b => b.status === 'confirmed')
         .reduce((sum, b) => sum + (b.total_price || 0), 0) || 0;
@@ -210,7 +276,8 @@ const AdminDashboard: React.FC = () => {
         totalBookings,
         activeMembers: Math.floor(totalBookings * 0.7), // Mock calculation
         monthlyRevenue,
-        pendingBookings
+        pendingBookings,
+        activeSessions
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -321,10 +388,43 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  const startBookingSession = async (bookingId: string) => {
+    try {
+      const { data: booking, error: bookingError } = await supabase
+        .from('bookings')
+        .select('user_id')
+        .eq('id', bookingId)
+        .single();
+
+      if (bookingError) throw bookingError;
+
+      const { error } = await supabase
+        .from('user_sessions')
+        .insert({
+          user_id: booking.user_id,
+          booking_id: bookingId,
+          session_type: 'booking',
+          confirmation_required: true,
+          started_by: user?.id,
+          status: 'active'
+        });
+
+      if (error) throw error;
+
+      toast.success('Booking session started');
+      fetchBookings();
+      fetchRecentSessions();
+    } catch (error) {
+      console.error('Error starting booking session:', error);
+      toast.error('Failed to start booking session');
+    }
+  };
+
   const handleBookingSuccess = () => {
     // Refresh bookings and stats after successful admin booking
     fetchBookings();
     fetchStats();
+    fetchRecentSessions();
   };
 
   const handleSaveBooking = async (bookingData: Partial<Booking>) => {
@@ -470,6 +570,13 @@ const AdminDashboard: React.FC = () => {
       change: '+2',
       icon: Settings,
       color: 'bg-red-500'
+    },
+    {
+      title: 'Active Sessions',
+      value: stats.activeSessions.toString(),
+      change: 'Live',
+      icon: Clock,
+      color: 'bg-purple-500'
     }
   ];
 
@@ -595,6 +702,16 @@ const AdminDashboard: React.FC = () => {
               }`}
             >
               Sessions
+            </button>
+            <button
+              onClick={() => setActiveTab('recent-sessions')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'recent-sessions'
+                   ? 'border-yellow-500 text-yellow-600'
+                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Recent Sessions
             </button>
             <button
               onClick={() => setActiveTab('subscriptions')}
@@ -731,6 +848,15 @@ const AdminDashboard: React.FC = () => {
                                     <XCircle className="w-4 h-4" />
                                   </button>
                                 </>
+                              )}
+                              {booking.status === 'confirmed' && (
+                                <button
+                                  onClick={() => startBookingSession(booking.id)}
+                                  className="text-blue-600 hover:text-blue-900"
+                                  title="Start booking session"
+                                >
+                                  <Play className="w-4 h-4" />
+                                </button>
                               )}
                               {canEditBooking(booking.status) && (
                                 <button
@@ -869,6 +995,87 @@ const AdminDashboard: React.FC = () => {
             </div>
           )}
 
+          {activeTab === 'recent-sessions' && (
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Recent Sessions</h3>
+              {recentSessions.length === 0 ? (
+                <div className="text-center py-8">
+                  <Clock className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                  <p className="text-gray-500">No sessions found.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Start Time</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {recentSessions.map((session) => (
+                        <tr key={session.id}>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">{session.user.name}</div>
+                              <div className="text-sm text-gray-500">{session.user.email}</div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                              session.session_type === 'booking' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
+                            }`}>
+                              {session.session_type}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {new Date(session.start_time).toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {session.status === 'active' ? (
+                              <span className="text-green-600 font-medium">Active</span>
+                            ) : session.duration_minutes ? (
+                              `${Math.floor(session.duration_minutes / 60)}h ${session.duration_minutes % 60}m`
+                            ) : (
+                              'N/A'
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                              session.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {session.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {session.booking && (
+                              <div>
+                                <p>{session.booking.workspace_type}</p>
+                                <p>{new Date(session.booking.date).toLocaleDateString()} {session.booking.time_slot}</p>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'sessions' && (
+            <SessionManagement />
+          )}
+
+          {activeTab === 'subscriptions' && (
+            <SubscriptionManagement />
+          )}
+
             {activeTab === 'settings' && (
               user.role === 'admin' ? (
               <div>
@@ -954,13 +1161,6 @@ const AdminDashboard: React.FC = () => {
             )}
           </div>
         </div>
-          {activeTab === 'sessions' && (
-            <SessionManagement />
-          )}
-
-          {activeTab === 'subscriptions' && (
-            <SubscriptionManagement />
-          )}
 
       </div>
 
