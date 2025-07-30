@@ -140,7 +140,7 @@ const Navbar: React.FC = () => {
 
               {user && (
                 <Link to="/my-bookings" className="text-black hover:text-yellow-500 block px-3 py-2 rounded-md text-base font-medium">
-                  My Bookings
+                  My Account
                 </Link>
               )}
 
