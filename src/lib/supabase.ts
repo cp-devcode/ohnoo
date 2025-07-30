@@ -107,6 +107,65 @@ export type Database = {
           created_at?: string
         }
       }
+      user_sessions: {
+        Row: {
+          id: string
+          user_id: string
+          user_subscription_id: string | null
+          booking_id: string | null
+          session_type: string
+          start_time: string
+          end_time: string | null
+          duration_minutes: number | null
+          hours_deducted: number
+          minutes_deducted: number
+          status: string
+          started_by: string
+          ended_by: string | null
+          confirmation_required: boolean
+          confirmed_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          user_subscription_id?: string | null
+          booking_id?: string | null
+          session_type?: string
+          start_time?: string
+          end_time?: string | null
+          duration_minutes?: number | null
+          hours_deducted?: number
+          minutes_deducted?: number
+          status?: string
+          started_by: string
+          ended_by?: string | null
+          confirmation_required?: boolean
+          confirmed_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          user_subscription_id?: string | null
+          booking_id?: string | null
+          session_type?: string
+          start_time?: string
+          end_time?: string | null
+          duration_minutes?: number | null
+          hours_deducted?: number
+          minutes_deducted?: number
+          status?: string
+          started_by?: string
+          ended_by?: string | null
+          confirmation_required?: boolean
+          confirmed_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
       workspace_types: {
         Row: {
           id: string

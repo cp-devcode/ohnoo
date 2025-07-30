@@ -18,7 +18,8 @@ import {
   DollarSign,
   ArrowLeft,
   Plus,
-  CreditCard
+  CreditCard,
+  Play
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -94,8 +95,15 @@ interface UserSession {
   end_time: string | null;
   duration_minutes: number | null;
   hours_deducted: number;
+  minutes_deducted: number;
   status: string;
+  session_type: string;
   created_at: string;
+  booking?: {
+    workspace_type: string;
+    date: string;
+    time_slot: string;
+  };
 }
 
 const AdminClientProfilePage: React.FC = () => {
@@ -110,6 +118,7 @@ const AdminClientProfilePage: React.FC = () => {
   const [userSessions, setUserSessions] = useState<UserSession[]>([]);
   const [assigningSubscription, setAssigningSubscription] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState('');
+  const [startingSession, setStartingSession] = useState(false);
   const [loading, setLoading] = useState(true);
   const [editingRole, setEditingRole] = useState(false);
   const [newRole, setNewRole] = useState<string>('');
@@ -222,10 +231,25 @@ const AdminClientProfilePage: React.FC = () => {
       // Fetch user sessions
       const { data: sessionsData, error: sessionsError } = await supabase
         .from('user_sessions')
-        .select('*')
+        .select(`
+          id,
+          start_time,
+          end_time,
+          duration_minutes,
+          hours_deducted,
+          minutes_deducted,
+          status,
+          session_type,
+          created_at,
+          booking:booking_id (
+            workspace_type,
+            date,
+            time_slot
+          )
+        `)
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
-        .limit(10);
+        .limit(20);
 
       if (sessionsError) throw sessionsError;
       setUserSessions(sessionsData || []);
@@ -422,6 +446,59 @@ const AdminClientProfilePage: React.FC = () => {
       toast.error('Failed to assign subscription');
     } finally {
       setAssigningSubscription(false);
+    }
+  };
+
+  const startUserSession = async () => {
+    if (!userSubscription) {
+      toast.error('User does not have an active subscription');
+      return;
+    }
+
+    if (userSubscription.hours_remaining <= 0) {
+      toast.error('User has no remaining hours in their subscription');
+      return;
+    }
+
+    try {
+      setStartingSession(true);
+
+      // Check if user already has an active session
+      const { data: existingSession, error: checkError } = await supabase
+        .from('user_sessions')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        throw checkError;
+      }
+
+      if (existingSession) {
+        toast.error('User already has an active session');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('user_sessions')
+        .insert({
+          user_id: userId,
+          user_subscription_id: userSubscription.id,
+          session_type: 'subscription',
+          started_by: user?.id,
+          status: 'active'
+        });
+
+      if (error) throw error;
+
+      toast.success('Session started successfully');
+      fetchClientData(); // Refresh to show new session
+    } catch (error) {
+      console.error('Error starting session:', error);
+      toast.error('Failed to start session');
+    } finally {
+      setStartingSession(false);
     }
   };
 
@@ -622,6 +699,28 @@ const AdminClientProfilePage: React.FC = () => {
                         {userSubscription.hours_remaining} of {userSubscription.subscription_plan.hours_included} hours remaining
                       </p>
                     </div>
+                    
+                    {userSubscription.status === 'active' && (
+                      <div className="mt-4 pt-4 border-t">
+                        <button
+                          onClick={startUserSession}
+                          disabled={startingSession}
+                          className="w-full bg-green-500 text-white py-2 px-4 rounded-md text-sm font-semibold hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                        >
+                          {startingSession ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                              Starting Session...
+                            </>
+                          ) : (
+                            <>
+                              <Play className="w-4 h-4 mr-2" />
+                              Start Session
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="text-center py-4">
@@ -745,7 +844,7 @@ const AdminClientProfilePage: React.FC = () => {
               {/* Recent Sessions */}
               <AnimatedSection animation="slideUp" duration={600}>
                 <div className="bg-white rounded-lg shadow-sm p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-6">Recent Sessions</h3>
+                  <h3 className="text-xl font-semibold text-gray-900 mb-6">Recent Sessions ({userSessions.length})</h3>
                   
                   {userSessions.length === 0 ? (
                     <div className="text-center py-8">
@@ -759,6 +858,11 @@ const AdminClientProfilePage: React.FC = () => {
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center space-x-2">
                               <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                session.session_type === 'booking' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
+                              }`}>
+                                {session.session_type?.toUpperCase() || 'SUBSCRIPTION'}
+                              </span>
+                              <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                                 session.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                               }`}>
                                 {session.status.toUpperCase()}
@@ -767,23 +871,37 @@ const AdminClientProfilePage: React.FC = () => {
                                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                               )}
                             </div>
-                            {session.hours_deducted > 0 && (
+                            {session.session_type === 'subscription' && session.hours_deducted > 0 && (
                               <span className="text-sm font-medium text-red-600">
-                                -{session.hours_deducted}h
+                                -{session.hours_deducted.toFixed(2)}h
+                              </span>
+                            )}
+                            {session.session_type === 'booking' && session.duration_minutes > 0 && (
+                              <span className="text-sm font-medium text-blue-600">
+                                {Math.floor(session.duration_minutes / 60)}h {session.duration_minutes % 60}m
                               </span>
                             )}
                           </div>
                           
-                          <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
+                          <div className="space-y-1 text-sm text-gray-600">
+                            {session.session_type === 'booking' && session.booking && (
+                              <div className="mb-2 p-2 bg-blue-50 rounded">
+                                <p><span className="font-medium">Booking:</span> {session.booking.workspace_type}</p>
+                                <p><span className="font-medium">Date:</span> {new Date(session.booking.date).toLocaleDateString()}</p>
+                                <p><span className="font-medium">Time:</span> {session.booking.time_slot}</p>
+                              </div>
+                            )}
+                            
                             <div>
                               <p><span className="font-medium">Started:</span> {new Date(session.start_time).toLocaleString()}</p>
                               {session.end_time && (
                                 <p><span className="font-medium">Ended:</span> {new Date(session.end_time).toLocaleString()}</p>
                               )}
-                            </div>
-                            <div>
                               {session.duration_minutes && (
                                 <p><span className="font-medium">Duration:</span> {Math.floor(session.duration_minutes / 60)}h {session.duration_minutes % 60}m</p>
+                              )}
+                              {session.session_type === 'subscription' && session.hours_deducted && (
+                                <p><span className="font-medium">Hours Deducted:</span> {session.hours_deducted.toFixed(2)}h</p>
                               )}
                               {session.status === 'active' && (
                                 <p><span className="font-medium">Current:</span> {(() => {
